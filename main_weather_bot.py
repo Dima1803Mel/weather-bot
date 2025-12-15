@@ -5,7 +5,7 @@ import math
 from  config import open_weather_token, tg_bot_token
 from aiogram import Bot, types, Dispatcher
 from aiogram.filters.command import Command
-from aiogram.utils.keyboard import ReplyKeyboardBuilder, InlineKeyboardBuilder
+from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiogram.types import (
     InlineKeyboardMarkup, 
     InlineKeyboardButton, 
@@ -55,7 +55,6 @@ def get_dates_keyboard(city_name: str):
     today = datetime.datetime.today()
 
     builder.add(InlineKeyboardButton(
-        # text = f"Сегодня({today.strftime('%d-%m-%Y')})",
         text = f"Сегодня",
         callback_data=f"weather_date:{today.strftime('%Y-%m-%d')}:{city_name}"
     ))
@@ -95,53 +94,29 @@ def extract_and_normalize_city(text):
     """
     
     doc = Doc(text)
-    doc.segment(segmenter) # Разбиваем на токены
-    doc.tag_morph(morph_tagger) # Морфологический разбор
-    doc.parse_syntax(syntax_parser) # Синтаксический анализ
+    doc.segment(segmenter) # Разбиваем на токены (слова, знаки препинания)
+    doc.tag_morph(morph_tagger) # Морфологический разбор - части речи, падеж, число и т.д.
+    doc.parse_syntax(syntax_parser) # Синтаксический анализ - связи между словами
     doc.tag_ner(ner_tagger)  # Распознавание именованных сущностей
     
     city = dict()
     
-    for span in doc.spans:
-        span.normalize(morph_vocab)
-        if span.type == 'LOC':
+    for span in doc.spans: # Проходим по всем найденным сущностям
+        span.normalize(morph_vocab) # Приводим к нормальной форме
+        if span.type == 'LOC': # Если сущность - локация (город, страна и т.д.)
             city = {
-                'text':span.text,
-                'normalized': span.normal,
-                'start': span.start,
-                'stop': span.stop,
-                'type': span.type
+                'text':span.text, # Как написано в тексте
+                'normalized': span.normal, # Нормальная форма
+                'start': span.start, # Начальная позиция в тексте
+                'stop': span.stop, # Конечная операция
+                'type': span.type # Тип сущности
             }
-            break
+            break # Нашли первый город - выходим из цикла
     
     if len(city) != 0:
-        return city['normalized']
+        return city['normalized'] # Возвращаем нормальзированные название города
     else:
-        return None
-            
-    
-    # for span in doc.spans:
-    #     if span.type == PER: # PER = Person/Place (в Natasha это и люди, и места)
-    #         city_candidate = span.text.strip()
-    #         if (len(city_candidate.split()) > 1 or city_candidate[0].isupper()):
-    #             # Приводим к нормальной форме
-    #             parsed = morph.parse(city_candidate)[0]
-    #             return parsed.normal_form.title()
-
-    # # Если Natasha не нашел, пробуем извлечь первое существительное
-    # words = text.split()
-    # for word in words:
-    #     if len(word) > 2:  # Слишком короткие слова игнорируем
-    #         parsed = morph.parse(word)[0]
-    #         if 'NOUN' in parsed.tag:
-    #             return parsed.normal_form.title()
-    
-    # # Если не нашли, возвращаем весь текст как есть (но в нормализованном виде)
-    # if words:
-    #     parsed = morph.parse(words[0])[0]
-    #     return parsed.normal_form.title()
-    
-    # return None
+        return None # Город не найден
             
             
 def get_city_coordinates(city_name):
@@ -163,59 +138,12 @@ async def get_weather_forecast(city_name, date_str):
     
     data = response.json()
     
-    # target_date = datetime.datetime.strptime(date_str, "%Y-%m-%d").date()
-    # forecast_for_date = []
-    
-    # for forecast in data['list']:
-    #     forecast_date = datetime.datetime.fromtimestamp(forecast['dt']).date()
-    #     if forecast_date == target_date:
-    #         forecast_for_date.append(forecast)
-            
-    #     if forecast_for_date:
-    #         # Берем прогноз на 12:00 или первый доступный
-    #         forecast = None
-    #         for f in forecast_for_date:
-    #             forecast_time = datetime.datetime.fromtimestamp(f['dt']).hour
-    #             if forecast_time == 12:  # Предпочитаем полдень
-    #                 forecast = f
-    #                 break
-            
-    #     if not forecast:
-    #         forecast = forecast_for_date[0]  # Или первый доступный
-            
-    #     # Анализируем погоду на весь день
-    #     weather_description = forecast["weather"][0]["main"]
-    #     wd = code_to_smile.get(weather_description, forecast["weather"][0]["description"])
-            
-    #     cur_weather = forecast["main"]["temp"]
-    #     humidity = forecast["main"]["humidity"]
-    #     pressure = forecast["main"]["pressure"]
-    #     wind = forecast["wind"]["speed"]
-    #     feels_like = forecast["main"]["feels_like"]
-            
-    #     forecast_time = datetime.datetime.fromtimestamp(forecast['dt']).strftime('%H:%M')
-            
-    #     date_formatted = target_date.strftime('%d.%m.%Y')
-            
-    #     message = (
-    #             f"***Прогноз погоды на {date_formatted} ({forecast_time})***\n"
-    #             f"📍 Город: {actual_city_name}\n"
-    #             f"🌡 Температура: {cur_weather:.1f}°C (ощущается как {feels_like:.1f}°C)\n"
-    #             f"☁️ Погода: {wd}\n"
-    #             f"💧 Влажность: {humidity}%\n"
-    #             f"📊 Давление: {math.ceil(pressure / 1.333)} мм рт. ст.\n"
-    #             f"💨 Ветер: {wind} м/с"
-    #         )
-            
-    #     return actual_city_name, message
-        
-    # return actual_city_name, "Прогноз на эту дату не найден"
-    
     target_date = datetime.datetime.strptime(f"{date_str} 12:00:00", "%Y-%m-%d %H:%M:%S")
     
     for forecast in data['list']:
         forecast_date = datetime.datetime.fromtimestamp(forecast['dt'])
         
+        # Если нету нужной даты, то берем первый прогноз
         if forecast_date != target_date and forecast == data['list'][39]:
             forecast_date = data['list'][0]
             target_date = data['list'][0]
@@ -266,7 +194,6 @@ async def handle_weather(callback: types.CallbackQuery):
 async def start_command(message: types.Message):
     await message.answer("Привет!\n"
                         "Я чат-бот погоды\n"
-                        # "Напиши мне название города и я пришлю тебе сводку погоды на любой из 5 дней")
                         "Просто напиши мне в каком городе тебя интересует погода и на какой день\n"
                         "P.S. Прогноз погоды доступен для городов не более чем на 5 дней вперед от текущей даты")
     
